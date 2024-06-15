@@ -26,7 +26,7 @@ import (
 	"encoding/binary"
 	"fmt"
 
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/fourcorelabs/go-smb/smb/encoder"
 )
 
 const (

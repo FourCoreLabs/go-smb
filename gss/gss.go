@@ -3,12 +3,12 @@ package gss
 import (
 	"encoding/asn1"
 
+	"github.com/fourcorelabs/go-smb/smb/encoder"
 	"github.com/jfjallid/ber"
-	"github.com/jfjallid/go-smb/smb/encoder"
 	"github.com/jfjallid/golog"
 )
 
-var log = golog.Get("github.com/jfjallid/go-smb/gss")
+var log = golog.Get("github.com/fourcorelabs/go-smb/gss")
 var SpnegoOid = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 5, 5, 2})
 var MsKerberosOid = asn1.ObjectIdentifier([]int{1, 2, 840, 48018, 1, 2, 2})
 var KerberosOid = asn1.ObjectIdentifier([]int{1, 2, 840, 113554, 1, 2, 2})
@@ -77,6 +77,7 @@ func (n *NegTokenInit) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
 
 func (n *NegTokenInit) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
 	data := NegTokenInit{}
+	asn1.UnmarshalWithParams(buf, &data, "application")
 	if _, err := ber.UnmarshalWithParams(buf, &data, "application"); err != nil {
 		log.Debugln(err)
 		return err

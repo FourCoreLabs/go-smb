@@ -41,11 +41,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/jfjallid/go-smb/gss"
-	"github.com/jfjallid/go-smb/ntlmssp"
-	"github.com/jfjallid/go-smb/smb/crypto/ccm"
-	"github.com/jfjallid/go-smb/smb/crypto/cmac"
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/fourcorelabs/go-smb/gss"
+	"github.com/fourcorelabs/go-smb/ntlmssp"
+	"github.com/fourcorelabs/go-smb/smb/crypto/ccm"
+	"github.com/fourcorelabs/go-smb/smb/crypto/cmac"
+	"github.com/fourcorelabs/go-smb/smb/encoder"
 	"golang.org/x/net/proxy"
 )
 

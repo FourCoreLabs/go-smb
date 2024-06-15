@@ -29,8 +29,8 @@ package smb
 import (
 	"encoding/asn1"
 
-	"github.com/jfjallid/go-smb/gss"
-	"github.com/jfjallid/go-smb/ntlmssp"
+	"github.com/fourcorelabs/go-smb/gss"
+	"github.com/fourcorelabs/go-smb/ntlmssp"
 )
 
 type Initiator interface {

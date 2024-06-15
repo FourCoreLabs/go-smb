@@ -30,11 +30,11 @@ import (
 
 	"github.com/jfjallid/golog"
 
-	"github.com/jfjallid/go-smb/gss"
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/fourcorelabs/go-smb/gss"
+	"github.com/fourcorelabs/go-smb/smb/encoder"
 )
 
-var log = golog.Get("github.com/jfjallid/go-smb/smb")
+var log = golog.Get("github.com/fourcorelabs/go-smb/smb")
 
 const ProtocolSmb = "\xFFSMB"
 const ProtocolSmb2 = "\xFESMB"

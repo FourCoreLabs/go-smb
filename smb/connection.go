@@ -37,7 +37,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/jfjallid/go-smb/smb/encoder"
+	"github.com/fourcorelabs/go-smb/smb/encoder"
 )
 
 type requestResponse struct {
