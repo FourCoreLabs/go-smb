@@ -40,6 +40,10 @@ import (
 	"github.com/fourcorelabs/go-smb/smb/encoder"
 )
 
+var (
+	ErrRemoteConnectionClosed = errors.New("remote connection has closed")
+)
+
 type requestResponse struct {
 	msgId        uint64
 	asyncId      uint64
@@ -85,6 +89,18 @@ func (c *Connection) disableSession() {
 	atomic.StoreInt32(&c._useSession, 0)
 }
 
+func (c *Connection) Dial(opt Options) (err error) {
+	if opt.ProxyDialer != nil {
+		c.useProxy = true
+		// No DialTimeout supported
+		c.conn, err = opt.ProxyDialer.Dial("tcp", fmt.Sprintf("%s:%d", opt.Host, opt.Port))
+		return
+	}
+
+	c.conn, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", opt.Host, opt.Port), opt.DialTimeout)
+	return
+}
+
 // Update the Initiator used for authentication.
 // Calling this function when already logged in will kill the existing session.
 func (c *Connection) SetInitiator(initiator Initiator) error {
@@ -101,6 +117,7 @@ func (conn *Connection) runSender() {
 	for {
 		select {
 		case <-conn.wdone:
+			fmt.Println("runSender Stopped")
 			return
 		case pkt := <-conn.write:
 			_, err := conn.conn.Write(pkt)
@@ -321,10 +338,9 @@ func (r *outstandingRequests) shutdown(err error) {
 	}
 }
 
-func NewConnection(opt Options) (c *Connection, err error) {
+func NewSMB1Connection(opt Options) (c *Connection, err error) {
 
 	if err := validateOptions(opt); err != nil {
-		log.Errorln(err)
 		return nil, err
 	}
 	c = &Connection{
@@ -349,19 +365,8 @@ func NewConnection(opt Options) (c *Connection, err error) {
 	}
 	c.Session.isSigningRequired.Store(opt.RequireMessageSigning)
 
-	if opt.ProxyDialer != nil {
-		c.useProxy = true
-		// No DialTimeout supported
-		c.conn, err = opt.ProxyDialer.Dial("tcp", fmt.Sprintf("%s:%d", opt.Host, opt.Port))
-		if err != nil {
-			log.Errorln(err)
-			return
-		}
-	} else {
-		c.conn, err = net.DialTimeout("tcp", fmt.Sprintf("%s:%d", opt.Host, opt.Port), opt.DialTimeout)
-		if err != nil {
-			return
-		}
+	if err = c.Dial(opt); err != nil {
+		return
 	}
 
 	// SMB Dialects other than 3.x requires clientGuid to be zero
@@ -380,10 +385,86 @@ func NewConnection(opt Options) (c *Connection, err error) {
 	go c.runReceiver()
 
 	log.Debugln("Negotiating protocol")
-	err = c.NegotiateProtocol()
-	if err != nil {
+
+	if !opt.ForceSMB2 {
+		if err = c.NegotiateSMB1Protocol(); err != nil {
+			return
+		}
+	}
+
+	if err = c.NegotiateSMB2Protocol(); err != nil {
 		return
 	}
+
+	if !opt.ManualLogin {
+		err = c.SessionSetup()
+		if err != nil {
+			return
+		}
+		log.Debugf("isSigningRequired: %v, RequireMessageSigning: %v, EncryptData: %v, IsNullSession: %v, IsGuestSession: %v\n", c.isSigningRequired.Load(), c.options.RequireMessageSigning, c.Session.sessionFlags&SessionFlagEncryptData == SessionFlagEncryptData, c.Session.sessionFlags&SessionFlagIsNull == SessionFlagIsNull, c.Session.sessionFlags&SessionFlagIsGuest == SessionFlagIsGuest)
+	}
+
+	return c, nil
+}
+
+func NewConnection(opt Options) (c *Connection, err error) {
+
+	if err := validateOptions(opt); err != nil {
+		return nil, err
+	}
+	c = &Connection{
+		outstandingRequests: newOutstandingRequests(),
+		rdone:               make(chan struct{}, 1),
+		wdone:               make(chan struct{}, 1),
+		write:               make(chan []byte, 1),
+		werr:                make(chan error, 1),
+	}
+
+	c.Session = &Session{
+		isSigningRequired: atomic.Bool{},
+		isAuthenticated:   false,
+		isSigningDisabled: opt.DisableSigning,
+		clientGuid:        make([]byte, 16),
+		securityMode:      0,
+		messageID:         0,
+		sessionID:         0,
+		dialect:           0,
+		options:           opt,
+		trees:             make(map[string]uint32),
+	}
+	c.Session.isSigningRequired.Store(opt.RequireMessageSigning)
+
+	if err = c.Dial(opt); err != nil {
+		return
+	}
+
+	// SMB Dialects other than 3.x requires clientGuid to be zero
+	if !opt.ForceSMB2 {
+		_, err = rand.Read(c.Session.clientGuid)
+		if err != nil {
+			log.Debugln(err)
+			return
+		}
+	} else {
+		c.Session.options.DisableEncryption = true
+	}
+
+	// Run sender and receiver go routines
+	go c.runSender()
+	go c.runReceiver()
+
+	log.Debugln("Negotiating protocol")
+
+	if !opt.ForceSMB2 {
+		if err = c.NegotiateSMB1Protocol(); err != nil {
+			return
+		}
+	}
+
+	if err = c.NegotiateSMB2Protocol(); err != nil {
+		return
+	}
+
 	if !opt.ManualLogin {
 		err = c.SessionSetup()
 		if err != nil {
@@ -542,7 +623,7 @@ func (c *Connection) send(req interface{}) (rr *requestResponse, err error) {
 
 func (c *Connection) recv(rr *requestResponse) (buf []byte, err error) {
 	if rr == nil {
-		return nil, fmt.Errorf("Remote connection has closed")
+		return nil, ErrRemoteConnectionClosed
 	}
 	select {
 	case <-c.rdone:
@@ -553,7 +634,7 @@ func (c *Connection) recv(rr *requestResponse) (buf []byte, err error) {
 		}
 		if len(buf) == 0 {
 			// Most likely received a TCP Reset
-			return nil, fmt.Errorf("Remote connection has closed!")
+			return nil, ErrRemoteConnectionClosed
 		}
 		return buf, nil
 	}

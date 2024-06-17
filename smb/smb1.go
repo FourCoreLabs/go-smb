@@ -54,14 +54,14 @@ type SMB1Dialect struct {
 	DialectString string // Null-terminated string
 }
 
-type SMB1NegotiateReq struct {
+type SMBNegotiateReq struct {
 	Header    SMB1Header
 	WordCount uint8
 	ByteCount uint16
 	Dialects  []SMB1Dialect
 }
 
-func (self *SMB1NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
+func (self *SMBNegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, error) {
 	log.Debugln("In MarshalBinary for SMB1NegotiateReq")
 	buf := make([]byte, 0, 46)
 	w := bytes.NewBuffer(buf)
@@ -90,11 +90,11 @@ func (self *SMB1NegotiateReq) MarshalBinary(meta *encoder.Metadata) ([]byte, err
 	return w.Bytes(), nil
 }
 
-func (self *SMB1NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
+func (self *SMBNegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) error {
 	return fmt.Errorf("NOT IMPLEMENTED UnmarshalBinary for SMB1NegotiateReq")
 }
 
-func (s *Session) NewSMB1NegotiateReq() (req SMB1NegotiateReq, err error) {
+func (s *Session) NewSMB1NegotiateReq() (req SMBNegotiateReq) {
 	header := SMB1Header{
 		Protocol:         []byte(ProtocolSmb),
 		Command:          SMB1CommandNegotiate,
@@ -104,21 +104,43 @@ func (s *Session) NewSMB1NegotiateReq() (req SMB1NegotiateReq, err error) {
 		TID:              0xffff,
 	}
 
-	// Dialects ordered in increasing preference
-	dialects := []SMB1Dialect{
-		SMB1Dialect{
+	req = SMBNegotiateReq{
+		Header: header,
+		Dialects: []SMB1Dialect{
+			{
+				BufferFormat:  0x2,
+				DialectString: string("NT LM 0.12\x00"),
+			},
+		},
+	}
+
+	return
+}
+
+func (s *Session) NewSMB2NegotiateReq() (req SMBNegotiateReq) {
+	header := SMB1Header{
+		Protocol:         []byte(ProtocolSmb2),
+		Command:          SMB1CommandNegotiate,
+		Flags:            0x18,   // Canonicalized Pathnames, Case sensitivity (path names are caseless)
+		Flags2:           0xc801, // Unicode strings, NT Error codes, Extended security negotiation, Long names are allowed
+		SecurityFeatures: make([]byte, 8),
+		TID:              0xffff,
+	}
+
+	preferredDialects := []SMB1Dialect{
+		{
 			BufferFormat:  0x2,
 			DialectString: string("SMB 2.100\x00"),
 		},
-		SMB1Dialect{
+		{
 			BufferFormat:  0x2,
 			DialectString: string("SMB 2.???\x00"),
 		},
 	}
 
-	req = SMB1NegotiateReq{
+	req = SMBNegotiateReq{
 		Header:   header,
-		Dialects: dialects,
+		Dialects: preferredDialects,
 	}
 
 	return

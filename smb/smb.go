@@ -994,7 +994,7 @@ func (self *NegotiateReq) UnmarshalBinary(buf []byte, meta *encoder.Metadata) er
 	return nil
 }
 
-func newHeader() Header {
+func newSMB2Header() Header {
 	return Header{
 		ProtocolID:    []byte(ProtocolSmb2),
 		StructureSize: 64,
@@ -1022,7 +1022,7 @@ func NewTransformHeader() TransformHeader {
 }
 
 func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandNegotiate
 	header.CreditCharge = 1
 
@@ -1124,7 +1124,7 @@ func (s *Session) NewNegotiateReq() (req NegotiateReq, err error) {
 
 func NewNegotiateRes() NegotiateRes {
 	res := NegotiateRes{
-		Header:                 newHeader(),
+		Header:                 newSMB2Header(),
 		StructureSize:          0x41,
 		SecurityMode:           0,
 		DialectRevision:        0,
@@ -1147,7 +1147,7 @@ func NewNegotiateRes() NegotiateRes {
 }
 
 func (s *Connection) NewSessionSetup1Req(spnegoClient *spnegoClient) (req SessionSetup1Req, err error) {
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandSessionSetup
 	header.CreditCharge = 1
 	header.SessionID = s.sessionID
@@ -1192,7 +1192,7 @@ func (s *Connection) NewSessionSetup1Req(spnegoClient *spnegoClient) (req Sessio
 
 func NewSessionSetup1Req() SessionSetup1Req {
 	ret := SessionSetup1Req{
-		Header:       newHeader(),
+		Header:       newSMB2Header(),
 		SecurityBlob: &gss.NegTokenInit{},
 	}
 	return ret
@@ -1204,7 +1204,7 @@ func NewSessionSetup1Res() (SessionSetup1Res, error) {
 		return SessionSetup1Res{}, err
 	}
 	ret := SessionSetup1Res{
-		Header:        newHeader(),
+		Header:        newSMB2Header(),
 		StructureSize: 0x9,
 		SecurityBlob:  &resp,
 	}
@@ -1213,7 +1213,7 @@ func NewSessionSetup1Res() (SessionSetup1Res, error) {
 }
 
 func (s *Connection) NewSessionSetup2Req(client *spnegoClient, msg *SessionSetup1Res) (SessionSetup2Req, error) {
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandSessionSetup
 	header.CreditCharge = 1
 	header.SessionID = s.sessionID
@@ -1264,14 +1264,14 @@ func (s *Connection) NewSessionSetup2Req(client *spnegoClient, msg *SessionSetup
 func NewSessionSetup2Res() (SessionSetup2Res, error) {
 	resp, _ := gss.NewNegTokenResp()
 	ret := SessionSetup2Res{
-		Header:       newHeader(),
+		Header:       newSMB2Header(),
 		SecurityBlob: &resp,
 	}
 	return ret, nil
 }
 
 func (s *Session) NewLogoffReq() LogoffReq {
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandLogoff
 	header.SessionID = s.sessionID
 	ret := LogoffReq{
@@ -1283,7 +1283,7 @@ func (s *Session) NewLogoffReq() LogoffReq {
 
 func NewLogoffRes() LogoffRes {
 	ret := LogoffRes{
-		Header:        newHeader(),
+		Header:        newSMB2Header(),
 		StructureSize: 4,
 	}
 	return ret
@@ -1292,7 +1292,7 @@ func NewLogoffRes() LogoffRes {
 // NewTreeConnectReq creates a new TreeConnect message and accepts the share name
 // as input.
 func (s *Session) NewTreeConnectReq(name string) (TreeConnectReq, error) {
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandTreeConnect
 	header.SessionID = s.sessionID
 
@@ -1312,7 +1312,7 @@ func NewTreeConnectRes() (TreeConnectRes, error) {
 }
 
 func (s *Session) NewTreeDisconnectReq(treeId uint32) (TreeDisconnectReq, error) {
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandTreeDisconnect
 	header.CreditCharge = 1
 	header.SessionID = s.sessionID
@@ -1338,7 +1338,7 @@ func (s *Session) NewCreateReq(share, name string,
 	createDisp uint32,
 	createOpts uint32) (CreateReq, error) {
 
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandCreate
 	header.CreditCharge = 1
 	header.SessionID = s.sessionID
@@ -1383,7 +1383,7 @@ func (s *Session) NewCreateReq(share, name string,
 }
 
 func (s *Session) NewCloseReq(share string, fileId []byte) (CloseReq, error) {
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandClose
 	header.CreditCharge = 1
 	header.SessionID = s.sessionID
@@ -1409,7 +1409,7 @@ func (s *Session) NewQueryDirectoryReq(share, pattern string, fileId []byte,
 		the variable-length field of the request) or the maximum size of the response.
 		CreditCharge = (max(SendPayloadSize, Expected ResponsePayloadSize) – 1) / 65536 + 1
 	*/
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandQueryDirectory
 	header.CreditCharge = calcCreditCharge(outputBufferLength)
 	header.SessionID = s.sessionID
@@ -1460,7 +1460,7 @@ func (s *Session) NewReadReq(share string, fileid []byte,
 	minRead uint32,
 ) (ReadReq, error) {
 
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandRead
 	header.CreditCharge = calcCreditCharge(length)
 	header.SessionID = s.sessionID
@@ -1496,7 +1496,7 @@ func (s *Session) NewWriteReq(share string, fileid []byte,
 	data []byte,
 ) (WriteReq, error) {
 
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandWrite
 	header.CreditCharge = calcCreditCharge(uint32(len(data)))
 	header.SessionID = s.sessionID
@@ -1530,7 +1530,7 @@ func (s *Session) NewWriteReq(share string, fileid []byte,
 }
 
 func (f *File) NewIoCTLReq(operation uint32, data []byte) (*IoCtlReq, error) {
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandIOCtl
 	header.CreditCharge = 1
 	header.Credits = 127
@@ -1563,7 +1563,7 @@ func (f *File) NewIoCTLReq(operation uint32, data []byte) (*IoCtlReq, error) {
 
 func (s *Session) NewSetInfoReq(share string, fileId []byte) (SetInfoReq, error) {
 
-	header := newHeader()
+	header := newSMB2Header()
 	header.Command = CommandSetInfo
 	header.CreditCharge = 1
 	header.SessionID = s.sessionID

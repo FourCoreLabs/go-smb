@@ -119,6 +119,7 @@ type Options struct {
 	User                  string
 	Password              string
 	Hash                  string
+	PreferredSMBDialects  []SMB1Dialect
 	DisableSigning        bool
 	RequireMessageSigning bool
 	DisableEncryption     bool
@@ -179,33 +180,54 @@ func (s *Session) IsSigningRequired() bool {
 	return s.isSigningRequired.Load()
 }
 
-func (c *Connection) NegotiateProtocol() error {
-	var rr *requestResponse
-	var negRes NegotiateRes
+func (c *Connection) NegotiateSMB1Protocol() error {
+	var (
+		rr  *requestResponse
+		err error
+	)
 
-	negReq1, err := c.NewSMB1NegotiateReq()
-	if err != nil {
-		log.Errorln(err)
-		return err
-	}
+	negReq1 := c.NewSMB1NegotiateReq()
+
 	log.Debugln("Sending SMB1 NegotiateProtocol request")
 	rr, err = c.send(&negReq1)
 	if err != nil {
-		log.Debugln(err)
 		return err
 	}
 
 	negResBuf, err := c.recv(rr)
 	if err != nil {
-		log.Debugln(err)
+		return err
+	}
+
+	if negResBuf[0] != 0xFF {
+		return fmt.Errorf("target %s did not send 0xFF as the first byte, got %s", c.conn.RemoteAddr().String(), negResBuf[0])
+	}
+	return fmt.Errorf("target %s is only accepting SMBv1, but SMBv1 support is not implemented", c.conn.RemoteAddr().String())
+}
+
+func (c *Connection) NegotiateSMB2Protocol() error {
+
+	var (
+		rr     *requestResponse
+		negRes NegotiateRes
+		err    error
+	)
+
+	negReq1 := c.NewSMB2NegotiateReq()
+
+	log.Debugln("Sending SMB2 NegotiateProtocol request")
+	rr, err = c.send(&negReq1)
+	if err != nil {
+		return err
+	}
+
+	negResBuf, err := c.recv(rr)
+	if err != nil {
 		return err
 	}
 
 	if negResBuf[0] == 0xFF {
-		// Server does not support or want to use SMB2.
-		err = fmt.Errorf("Target %s is only accepting SMBv1, but SMBv1 support is not implemented", c.conn.RemoteAddr().String())
-		log.Errorln(err) // Skip print?
-		return err
+		return fmt.Errorf("target %s is only accepting SMBv1, but SMBv1 support is not implemented", c.conn.RemoteAddr().String())
 	}
 
 	negRes1 := NewNegotiateRes()
@@ -215,45 +237,43 @@ func (c *Connection) NegotiateProtocol() error {
 		return err
 	}
 
-	if negRes1.DialectRevision <= DialectSmb2_ALL {
-		if negRes1.DialectRevision != DialectSmb2_ALL {
-			// NOTE this is likely breaking the SMB2 specification, but since
-			// servers such as impacket's smbserver.py responds incorrectly to
-			// a multi-protocol negotiation request we attempt to renegotiate
-			// the protocol dialect using SMB2.
-			err = fmt.Errorf("Server responded to the multi-protocol negotiation with an invalid DialectRevision of 0x%x, but expected 0x%x. Restarting protocol negotiation using SMB2.\n", negRes1.DialectRevision, DialectSmb2_ALL)
-			log.Errorln(err)
-		}
-		// Send new SMB2 NegotiateRequest message
-		negReq, err := c.NewNegotiateReq()
-		if err != nil {
-			log.Errorln(err)
-			return err
-		}
-		log.Debugln("Sending SMB2 NegotiateProtocol request")
-		// Reuse rr variable for second neg protocol req to keep reference
-		// for calculation of pre-auth integrity hash
-		rr, err = c.send(negReq)
-		if err != nil {
-			log.Debugln(err)
-			return err
-		}
+	if negRes1.DialectRevision > DialectSmb2_ALL {
+		return fmt.Errorf("server responded to the multi-protocol negotiation with an invalid DialectRevision of 0x%x\n", negRes1.DialectRevision)
+	}
 
-		negResBuf, err = c.recv(rr)
-		if err != nil {
-			log.Debugln(err)
-			return err
-		}
+	if negRes1.DialectRevision != DialectSmb2_ALL {
+		// NOTE this is likely breaking the SMB2 specification, but since
+		// servers such as impacket's smbserver.py responds incorrectly to
+		// a multi-protocol negotiation request we attempt to renegotiate
+		// the protocol dialect using SMB2.
+		log.Errorln("Server responded to the multi-protocol negotiation with an invalid DialectRevision of 0x%x, but expected 0x%x. Restarting protocol negotiation using SMB2.\n", negRes1.DialectRevision, DialectSmb2_ALL)
+	}
 
-		negRes = NewNegotiateRes()
-		log.Debugln("Unmarshalling second NegotiateProtocol response")
-		if err := encoder.Unmarshal(negResBuf, &negRes); err != nil {
-			log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(negResBuf))
-			return err
-		}
-	} else {
-		err = fmt.Errorf("Server responded to the multi-protocol negotiation with an invalid DialectRevision of 0x%x\n", negRes1.DialectRevision)
+	// Send new SMB2 NegotiateRequest message
+	negReq, err := c.NewNegotiateReq()
+	if err != nil {
+		log.Errorln(err)
+		return err
+	}
+	log.Debugln("Sending SMB2 NegotiateProtocol request")
+	// Reuse rr variable for second neg protocol req to keep reference
+	// for calculation of pre-auth integrity hash
+	rr, err = c.send(negReq)
+	if err != nil {
 		log.Debugln(err)
+		return err
+	}
+
+	negResBuf, err = c.recv(rr)
+	if err != nil {
+		log.Debugln(err)
+		return err
+	}
+
+	negRes = NewNegotiateRes()
+	log.Debugln("Unmarshalling second NegotiateProtocol response")
+	if err := encoder.Unmarshal(negResBuf, &negRes); err != nil {
+		log.Debugf("Error: %v\nRaw:\n%v\n", err, hex.Dump(negResBuf))
 		return err
 	}
 
